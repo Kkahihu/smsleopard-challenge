@@ -1,0 +1,199 @@
+# SMSLeopard Campaign Dispatch Service - .gitignore
+
+# ====================
+# Environment Variables
+# ====================
+# CRITICAL: Never commit environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# Keep .env.example for reference
+!.env.example
+
+# ====================
+# Go Build Artifacts
+# ====================
+# Compiled binaries and executables
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Compiled Go binaries (built from cmd/api and cmd/worker)
+/api
+/worker
+/cmd/api/api
+/cmd/worker/worker
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+coverage.html
+
+# Go workspace file
+go.work
+
+# ====================
+# IDE & Editor Files
+# ====================
+# Visual Studio Code
+.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# GoLand / IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ====================
+# Operating System Files
+# ====================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+
+# Linux
+*~
+
+# ====================
+# Database Files
+# ====================
+# Local database files (if using SQLite for testing)
+*.db
+*.sqlite
+*.sqlite3
+
+# Database dumps
+*.sql.gz
+*.dump
+
+# ====================
+# Logs & Debug Files
+# ====================
+# Application logs
+*.log
+logs/
+log/
+
+# Debug files
+debug
+debug.test
+__debug_bin
+
+# ====================
+# Dependency Directories
+# ====================
+# Vendored dependencies (if using go mod vendor)
+/vendor/
+
+# ====================
+# Temporary Files
+# ====================
+# Temporary directories
+tmp/
+temp/
+.tmp/
+
+# ====================
+# Docker & Container Files
+# ====================
+# Docker volumes (if created locally)
+.docker/
+docker-compose.override.yml
+
+# ====================
+# Testing & Coverage
+# ====================
+# Test cache
+.cache/
+testdata/output/
+
+# Benchmark results
+*.bench
+
+# ====================
+# Build & Distribution
+# ====================
+# Build directories
+/build/
+/dist/
+/bin/
+
+# Archives
+*.tar
+*.tar.gz
+*.zip
+*.rar
+
+# ====================
+# Documentation
+# ====================
+# Ignore entire docs folder (internal documentation)
+docs/
+
+# Generated documentation (if any)
+/site/
+
+# ====================
+# Secrets & Credentials
+# ====================
+# Private keys
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Credentials files
+credentials.json
+service-account.json
+
+# ====================
+# Project Specific
+# ====================
+# Migration state files (if using migration tool that creates state files)
+.migrate/
+
+# Seed data outputs (if generating seed files)
+/scripts/seed_output/
+
+# Local development overrides
+docker-compose.dev.yml
+docker-compose.local.yml
