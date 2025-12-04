@@ -1,0 +1,22 @@
+# Dockerfile
+FROM golang:1.25-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+# Build API binary
+RUN CGO_ENABLED=0 GOOS=linux go build -o smsleopard-api ./cmd/api
+
+# Build Worker binary
+RUN CGO_ENABLED=0 GOOS=linux go build -o smsleopard-worker ./cmd/worker
+
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates wget
+WORKDIR /app
+COPY --from=builder /app/smsleopard-api .
+COPY --from=builder /app/smsleopard-worker .
+EXPOSE 8080
+
+# Default to API, overridden by docker-compose for worker
+CMD ["./smsleopard-api"]
