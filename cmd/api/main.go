@@ -10,6 +10,10 @@ import (
 	_ "github.com/lib/pq"
 
 	"smsleopard/internal/config"
+	"smsleopard/internal/handler"
+	"smsleopard/internal/middleware"
+	"smsleopard/internal/repository"
+	"smsleopard/internal/service"
 )
 
 func main() {
@@ -35,8 +39,40 @@ func main() {
 	}
 	log.Println("✅ Connected to database")
 
+	// Initialize repositories
+	customerRepo := repository.NewCustomerRepository(db)
+	campaignRepo := repository.NewCampaignRepository(db)
+	messageRepo := repository.NewMessageRepository(db)
+
+	// Initialize services
+	templateService := service.NewTemplateService()
+	campaignService := service.NewCampaignService(
+		campaignRepo,
+		customerRepo,
+		messageRepo,
+		templateService,
+		db,
+	)
+
+	// Initialize handlers
+	campaignHandler := handler.NewCampaignHandler(campaignService)
+	previewHandler := handler.NewPreviewHandler(campaignService)
+
 	// Create router
 	router := mux.NewRouter()
+
+	// Apply middleware
+	router.Use(middleware.Recovery)
+	router.Use(middleware.Logger)
+
+	// Campaign routes
+	router.HandleFunc("/campaigns", campaignHandler.Create).Methods("POST")
+	router.HandleFunc("/campaigns", campaignHandler.List).Methods("GET")
+	router.HandleFunc("/campaigns/{id:[0-9]+}", campaignHandler.GetByID).Methods("GET")
+	router.HandleFunc("/campaigns/{id:[0-9]+}/send", campaignHandler.Send).Methods("POST")
+
+	// Preview route
+	router.HandleFunc("/campaigns/{id:[0-9]+}/personalized-preview", previewHandler.Preview).Methods("POST")
 
 	// Health endpoint
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -51,8 +87,6 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"healthy","database":"connected"}`))
 	}).Methods("GET")
-
-	// TODO: Add campaign endpoints in Phase 4
 
 	// Start server
 	port := ":" + cfg.Server.Port
