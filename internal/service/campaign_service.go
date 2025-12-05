@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"time"
 
 	"smsleopard/internal/models"
+	"smsleopard/internal/queue"
 	"smsleopard/internal/repository"
 )
 
@@ -16,6 +18,7 @@ type CampaignService struct {
 	customerRepo repository.CustomerRepository
 	messageRepo  repository.MessageRepository
 	templateSvc  *TemplateService
+	publisher    *queue.Publisher
 	db           *sql.DB
 }
 
@@ -25,6 +28,7 @@ func NewCampaignService(
 	customerRepo repository.CustomerRepository,
 	messageRepo repository.MessageRepository,
 	templateSvc *TemplateService,
+	publisher *queue.Publisher,
 	db *sql.DB,
 ) *CampaignService {
 	return &CampaignService{
@@ -32,6 +36,7 @@ func NewCampaignService(
 		customerRepo: customerRepo,
 		messageRepo:  messageRepo,
 		templateSvc:  templateSvc,
+		publisher:    publisher,
 		db:           db,
 	}
 }
@@ -149,20 +154,14 @@ func (s *CampaignService) SendCampaign(ctx context.Context, campaignID int, cust
 	}
 	defer tx.Rollback()
 
-	// Create outbound messages with rendered content
+	// Create outbound messages without rendered content (will be rendered by worker)
 	messages := make([]*models.OutboundMessage, 0, len(customers))
 	for _, customer := range customers {
-		// Render template with customer data
-		renderedContent, err := s.templateSvc.Render(campaign.BaseTemplate, customer)
-		if err != nil {
-			return nil, fmt.Errorf("failed to render template for customer %d: %w", customer.ID, err)
-		}
-
 		message := &models.OutboundMessage{
 			CampaignID:      campaign.ID,
 			CustomerID:      customer.ID,
 			Status:          models.MessageStatusPending,
-			RenderedContent: &renderedContent,
+			RenderedContent: nil, // Will be set by worker
 			RetryCount:      0,
 			CreatedAt:       time.Now(),
 			UpdatedAt:       time.Now(),
@@ -184,6 +183,15 @@ func (s *CampaignService) SendCampaign(ctx context.Context, campaignID int, cust
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// Publish jobs to queue (outside transaction)
+	for _, message := range messages {
+		err := s.publisher.PublishMessage(message.ID, campaign.ID, message.CustomerID)
+		if err != nil {
+			// Log error but don't fail - worker will retry
+			log.Printf("Warning: Failed to publish message %d to queue: %v", message.ID, err)
+		}
 	}
 
 	return &SendCampaignResult{
