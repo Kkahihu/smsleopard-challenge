@@ -12,6 +12,7 @@ import (
 	"smsleopard/internal/config"
 	"smsleopard/internal/handler"
 	"smsleopard/internal/middleware"
+	"smsleopard/internal/queue"
 	"smsleopard/internal/repository"
 	"smsleopard/internal/service"
 )
@@ -39,6 +40,24 @@ func main() {
 	}
 	log.Println("✅ Connected to database")
 
+	// Connect to RabbitMQ
+	rabbitmqURL := cfg.GetRabbitMQURL()
+
+	queueConn, err := queue.NewConnection(rabbitmqURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to RabbitMQ: %v", err)
+	}
+	defer queueConn.Close()
+
+	// Create publisher
+	queueName := "campaign_sends"
+	publisher, err := queue.NewPublisher(queueConn, queueName)
+	if err != nil {
+		log.Fatalf("Failed to create publisher: %v", err)
+	}
+
+	log.Println("✅ Connected to RabbitMQ")
+
 	// Initialize repositories
 	customerRepo := repository.NewCustomerRepository(db)
 	campaignRepo := repository.NewCampaignRepository(db)
@@ -51,6 +70,7 @@ func main() {
 		customerRepo,
 		messageRepo,
 		templateService,
+		publisher,
 		db,
 	)
 
