@@ -1,9 +1,9 @@
 -- Create campaigns table
 CREATE TABLE IF NOT EXISTS campaigns (
     id SERIAL PRIMARY KEY,
-    name VARCHAR(200) NOT NULL,
+    name VARCHAR(200) NOT NULL UNIQUE,
     channel VARCHAR(20) NOT NULL CHECK (channel IN ('sms', 'whatsapp')),
-    status VARCHAR(20) NOT NULL DEFAULT 'draft' 
+    status VARCHAR(20) NOT NULL DEFAULT 'draft'
         CHECK (status IN ('draft', 'scheduled', 'sending', 'sent', 'failed')),
     base_template TEXT NOT NULL,
     scheduled_at TIMESTAMP,
