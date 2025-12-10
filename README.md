@@ -520,50 +520,6 @@ docker-compose exec db psql -U smsleopard -d smsleopard_db
 
 ---
 
-## 📝 Phase 7 Implementation
-
-Phase 7 focused on seed data generation and migration management:
-
-### Completed Features
-
-✅ **Seed Data Generation**
-- Two seed methods: Go script ([`seed.go`](scripts/seed.go)) and SQL files ([`migrations/seed/`](migrations/seed/))
-- Go script generates 12 customers with varied NULL fields
-- SQL seeds provide curated test datasets (15 customers, 3 campaigns)
-- Different phone patterns to avoid conflicts
-
-✅ **Migration Management**
-- Comprehensive [`migrate.go`](scripts/migrate.go) with version tracking
-- Commands: `up`, `down`, `status`, `reset`, `seed`
-- Transaction safety and colored output
-- Detailed documentation in [`scripts/README.md`](scripts/README.md)
-
-✅ **Data Validation**
-- Verified 12 customers seeded successfully
-- Confirmed varied NULL field combinations
-- Validated 3 campaigns with different channels (SMS, WhatsApp) and statuses (draft, scheduled, sent)
-
-✅ **Docker Integration**
-- PostgreSQL auto-initializes schema on first startup
-- Manual seeding via scripts for controlled data insertion
-- Healthchecks for all services
-
-### Validation Results
-
-```
-✓ Customer count: 12
-✓ NULL field variety: 
-  - 10/12 with first_name
-  - 8/12 with last_name  
-  - 9/12 with location
-  - 10/12 with preferred_product
-✓ Campaigns: 3 with mixed channels/statuses
-✓ Channel variety: SMS, WhatsApp
-✓ Status variety: draft, scheduled, sent
-```
-
----
-
 ## 🔍 Troubleshooting
 
 ### Database Connection Issues
@@ -669,13 +625,10 @@ go mod download
 
 ## 📚 Documentation Links
 
+- **System Overview**: [`SYSTEM_OVERVIEW.md`](SYSTEM_OVERVIEW.md) - Comprehensive technical documentation
 - **Implementation Plan**: [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
 - **Testing Guide**: [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md)
 - **Scripts Documentation**: [`scripts/README.md`](scripts/README.md)
-- **Phase Execution Plans**: 
-  - [`docs/PHASE_1_EXECUTION_PLAN.md`](docs/PHASE_1_EXECUTION_PLAN.md)
-  - [`docs/PHASE_2_EXECUTION_PLAN.md`](docs/PHASE_2_EXECUTION_PLAN.md)
-  - [`docs/PHASE_3_EXECUTION_PLAN.md`](docs/PHASE_3_EXECUTION_PLAN.md)
 
 ---
 
@@ -701,302 +654,33 @@ go mod download
 
 ## 🎯 Design Decisions & Implementation Notes
 
-This section documents key architectural decisions, assumptions, and implementation details made during development.
+This project makes several key architectural and implementation decisions. For comprehensive technical documentation including:
 
-### Implementation Assumptions
+- **System Architecture**: Data models, request flows, and component interactions
+- **Template Personalization**: NULL field handling strategy and rendering logic
+- **Message Queue Design**: RabbitMQ implementation with retry logic and acknowledgments
+- **Pagination Strategy**: Offset-based approach with stable ordering
+- **Worker Processing**: Asynchronous message handling and retry mechanisms
+- **Health Monitoring**: Service health checks and status reporting
+- **Testing Approach**: Unit, integration, and end-to-end testing strategies
 
-The following assumptions were made during the implementation of this system:
+Please refer to the **[System Overview](SYSTEM_OVERVIEW.md)** document, which provides detailed explanations of:
 
-1. **Customer Data Quality**
-   - Phone numbers are stored in international format (e.g., `+254700123456`)
-   - Customer fields (first_name, last_name, location, preferred_product) are optional
-   - NULL values in customer fields are acceptable and handled gracefully
+1. **Data Model & Architecture** - ERD, status enumerations, and indexes
+2. **Request Flow** - Complete `/campaigns/{id}/send` processing pipeline
+3. **Queue Worker Processing** - Retry logic, acknowledgments, and error handling
+4. **Pagination Strategy** - Implementation and performance considerations
+5. **Personalization System** - Template syntax and NULL field handling
+6. **Technology Choices** - Why PostgreSQL, RabbitMQ, and Go were selected
+7. **Quality Assurance** - Testing strategy and observability features
 
-2. **Campaign Workflow**
-   - Campaigns can only be sent when in `draft` or `scheduled` status
-   - Once a campaign is sent, its status transitions to `sending`, then `sent`
-   - Failed campaigns remain in `failed` status and require manual intervention
+### Quick Reference: Key Decisions
 
-3. **Message Processing**
-   - Messages are processed asynchronously via RabbitMQ queue
-   - Each message can be retried up to 3 times before permanent failure
-   - Messages are rendered at processing time (not at campaign creation)
-   - Rendering happens in the worker, not during campaign send
-
-4. **Database Transactions**
-   - Campaign sending uses transactions to ensure atomicity
-   - Queue publishing happens **after** transaction commit (eventual consistency)
-   - Failed queue publishes are logged but don't fail the request (worker will retry)
-
-5. **System Scalability**
-   - Single worker instance is sufficient for current requirements
-   - Horizontal scaling is possible by adding more worker instances
-   - Database connection pooling is configured for concurrent access
-
-6. **Development Environment**
-   - Docker Compose is the primary development environment
-   - Local Go execution is supported for rapid development
-   - PostgreSQL 17 and RabbitMQ 3 are the only external dependencies
-
-### Template Handling for NULL Fields
-
-**Strategy**: Replace NULL or empty fields with **empty string**
-
-**Implementation**:
-```go
-// If customer field is NULL or empty
-if customer.FirstName != nil && *customer.FirstName != "" {
-    rendered = strings.ReplaceAll(rendered, "{first_name}", *customer.FirstName)
-} else {
-    rendered = strings.ReplaceAll(rendered, "{first_name}", "")
-}
-```
-
-**Rationale**:
-
-This approach was chosen after considering several alternatives:
-
-| Approach | Pros | Cons | Decision |
-|----------|------|------|----------|
-| **Empty string** (✅ Chosen) | Graceful degradation, no delivery failures, flexible for partial data | May produce awkward spacing | **Selected** - Best balance |
-| Keep placeholder | Easy to spot missing data | Unprofessional appearance, confusing to recipients | Rejected |
-| Use default value | Consistent experience | Less authentic, harder to maintain | Rejected |
-| Block sending | Ensures data quality | Too restrictive, loses revenue opportunities | Rejected |
-
-**Example Scenarios**:
-
-```
-Template: "Hi {first_name}! Your phone is {phone}"
-
-Scenario 1 (Complete data):
-Customer: {first_name: "John", phone: "+254700123456"}
-Result:   "Hi John! Your phone is +254700123456"
-
-Scenario 2 (Missing first_name):
-Customer: {first_name: NULL, phone: "+254700123456"}
-Result:   "Hi ! Your phone is +254700123456"
-
-Scenario 3 (No personalization needed):
-Template: "Special offer today!"
-Customer: {first_name: NULL, ...}
-Result:   "Special offer today!"
-```
-
-**Best Practices for Template Authors**:
-- Design templates that work with partial data
-- Use optional personalization: "Hi{first_name: John}!" → works as "Hi!" or "Hi John!"
-- Test templates with NULL fields before sending
-- Use the preview endpoint to verify rendering
-
-### Mock Sender Behavior
-
-The system includes a mock sender service ([`internal/service/sender_service.go`](internal/service/sender_service.go)) to simulate real SMS/WhatsApp gateway behavior.
-
-**Configuration**:
-```go
-// Success rate: 95% (configurable)
-senderSvc := service.NewSenderService(0.95)
-```
-
-**Behavior**:
-
-1. **Simulated Latency**: 50-200ms per send (random)
-   ```go
-   latency := 50 + rand.Intn(150) // 50-200ms
-   time.Sleep(time.Duration(latency) * time.Millisecond)
-   ```
-
-2. **Success Rate**: 95% success, 5% failure (configurable)
-   ```go
-   success := rand.Float64() < s.successRate // 0.95 = 95%
-   ```
-
-3. **Error Messages**: Realistic gateway errors
-   - "Network timeout"
-   - "Invalid phone number format"
-   - "Carrier rejected message"
-   - "Daily quota exceeded"
-
-**Response Structure**:
-```go
-type SendResult struct {
-    Success bool
-    Latency time.Duration
-    Error   error  // nil if Success=true
-}
-```
-
-**Purpose**:
-- **Testing**: Validate retry logic without external dependencies
-- **Development**: No need for real SMS gateway credentials
-- **Demonstration**: Show system behavior under failure conditions
-- **Cost-effective**: No charges for test messages
-
-**Production Replacement**:
-To integrate with a real gateway, replace `SenderService` implementation while maintaining the same interface:
-```go
-// Production implementation
-type ProductionSender struct {
-    apiKey    string
-    apiSecret string
-    baseURL   string
-}
-
-func (s *ProductionSender) Send(channel, phone, message string) *SendResult {
-    // Make HTTP request to real gateway
-    // Return actual result
-}
-```
-
-### Queue Choice: RabbitMQ vs Redis
-
-**Decision**: RabbitMQ was chosen over Redis for message queuing.
-
-**Comparison**:
-
-| Feature | RabbitMQ ✅ | Redis | Verdict |
-|---------|------------|-------|---------|
-| **Message Persistence** | Native durable queues | Requires configuration | RabbitMQ |
-| **Acknowledgment** | Built-in ACK/NACK | Manual implementation needed | RabbitMQ |
-| **Message Ordering** | Guaranteed FIFO | Requires sorted sets | RabbitMQ |
-| **Reliability** | Purpose-built for messaging | In-memory first | RabbitMQ |
-| **Retry Logic** | Native requeue support | Custom implementation | RabbitMQ |
-| **Dead Letter Queues** | Built-in DLQ support | Manual implementation | RabbitMQ |
-| **Learning Curve** | Steeper | Easier | Redis |
-| **Performance** | Good (enough for use case) | Faster | Tie |
-| **Memory Usage** | Lower (disk-backed) | Higher (in-memory) | RabbitMQ |
-
-**RabbitMQ Advantages**:
-
-1. **Message Durability**: Messages survive broker restarts
-   ```go
-   ch.QueueDeclare(
-       queueName,
-       true,  // durable - survives restarts
-       false, // not auto-delete
-       false, // not exclusive
-       false, // no-wait
-       nil,
-   )
-   ```
-
-2. **Acknowledgment Model**: Built-in delivery guarantees
-   ```go
-   // Manual ACK after processing
-   if success {
-       d.Ack(false)  // Remove from queue
-   } else {
-       d.Nack(false, true)  // Requeue for retry
-   }
-   ```
-
-3. **Prefetch Control**: Prevent worker overload
-   ```go
-   ch.Qos(
-       1,     // Process 1 message at a time
-       0,     // No size limit
-       false, // Per-consumer (not global)
-   )
-   ```
-
-4. **Future Scalability**: Easy to add priority queues, routing, fanout patterns
-
-**Redis Considerations**:
-
-While Redis is excellent for caching and simple queues, it would require:
-- Custom retry logic implementation
-- Manual dead letter queue handling
-- Careful management of in-memory limits
-- Additional code for message persistence
-
-**Conclusion**: RabbitMQ provides "batteries-included" messaging features that align perfectly with campaign processing requirements, reducing custom code and potential bugs.
-
-### Extra Feature: Health Monitoring
-
-**Implementation**: Health check endpoint for operational visibility
-
-**Feature**: `GET /health` endpoint (HTTP 200/503)
-
-The health endpoint provides real-time status of critical dependencies, enabling:
-- **Docker Healthchecks**: Automatic container restart on failures
-- **Load Balancer Integration**: Remove unhealthy instances from rotation
-- **Monitoring Systems**: Integration with Prometheus, Datadog, etc.
-- **Operational Visibility**: Quick status checks during debugging
-
-**Implementation Details**:
-- Database check: 2-second timeout for connection test
-- Queue check: Connection attempt to RabbitMQ
-- Status levels: `healthy`, `degraded`, `unhealthy`
-- Version tracking: `1.0.0` (from config)
-
-See [Health Endpoint](#-health-endpoint) section above for complete documentation.
-
-**Why This Feature**:
-- **Production-Ready**: Essential for real-world deployments
-- **Easy Implementation**: ~150 lines of code (service + handler)
-- **High Value**: Immediate operational benefits
-- **Best Practice**: Industry standard for microservices
-
-### Development Time & AI Tool Usage
-
-**Total Development Time**: ~11 hours (across 10 phases)
-
-**Time Breakdown by Phase**:
-
-| Phase | Description | Time Spent | AI Assistance |
-|-------|-------------|------------|---------------|
-| 1 | Project structure & database setup | 1.5h | 60% - Boilerplate generation |
-| 2 | Data models & repository layer | 2h | 50% - SQL queries, struct definitions |
-| 3 | Business logic & services | 2h | 40% - Template logic, error handling |
-| 4 | API endpoints & handlers | 2h | 50% - HTTP handlers, routing |
-| 5 | Queue worker implementation | 2.5h | 40% - RabbitMQ integration, retry logic |
-| 6 | Testing suite | 2.5h | 70% - Test case generation, mocks |
-| 7 | Seed data & migrations | 1h | 60% - SQL generation, Go scripting |
-| 8 | Health endpoint (extra feature) | 1h | 50% - Implementation, documentation |
-| 9 | Documentation | 2h | 80% - Diagrams, technical writing |
-| 10 | Final integration & polish | 1h | 30% - Bug fixes, refinement |
-
-**AI Tool Usage**: Claude (Anthropic) via Roo Cline VSCode extension
-
-**How AI Was Used**:
-
-1. **Code Generation** (40-70%):
-   - Boilerplate code (handlers, repositories, models)
-   - SQL migrations and seed data
-   - Test cases and mock implementations
-   - Configuration management
-
-2. **Architecture Guidance** (80%):
-   - Design pattern recommendations
-   - Best practices for Go project structure
-   - RabbitMQ vs Redis comparison
-   - Error handling strategies
-
-3. **Documentation** (80%):
-   - API documentation
-   - System architecture diagrams
-   - README formatting and structure
-   - Code comments and explanations
-
-4. **Problem Solving** (30-50%):
-   - Debugging Docker build issues
-   - Database constraint errors
-   - Migration strategy refinement
-   - Performance optimization ideas
-
-**Manual Work**:
-- **Business Logic**: Core template rendering, campaign send flow (70% manual)
-- **Testing**: Test case design and validation (30% manual)
-- **Debugging**: Actual error diagnosis and fixes (70% manual)
-- **Integration**: Connecting components and ensuring they work together (60% manual)
-
-**Code Quality Assessment**:
-- AI-generated code required review and refinement
-- Critical business logic was written/reviewed manually
-- All code was tested and validated before committing
-- Documentation was AI-assisted but human-verified
-
-**Key Takeaway**: AI significantly accelerated development (estimated 30-40% time savings), particularly for boilerplate code, documentation, and test generation. However, human oversight remained essential for business logic, architecture decisions, and quality assurance.
+- **NULL Field Handling**: Empty strings for graceful degradation (see [SYSTEM_OVERVIEW.md#52](SYSTEM_OVERVIEW.md#52-null-field-handling-strategy))
+- **Queue Choice**: RabbitMQ for durable messaging with built-in retries (see [SYSTEM_OVERVIEW.md#62](SYSTEM_OVERVIEW.md#62-technology-choices))
+- **Mock Sender**: 95% success rate simulation for testing (see [`internal/service/sender_service.go`](internal/service/sender_service.go))
+- **Pagination**: `ORDER BY id DESC` for stable, predictable results (see [SYSTEM_OVERVIEW.md#4](SYSTEM_OVERVIEW.md#4-pagination-strategy))
+- **Health Monitoring**: `/health` endpoint with dependency checks (see [Health Endpoint](#-health-endpoint))
 
 ---
 
