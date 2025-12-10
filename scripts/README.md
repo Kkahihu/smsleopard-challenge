@@ -1,412 +1,328 @@
-# SMSLeopard Testing Scripts
+# SMSLeopard Scripts
 
-This directory contains scripts for testing the SMSLeopard asynchronous message processing system.
+This directory contains utility scripts for managing the SMSLeopard database.
 
-## Available Scripts
+## Migration Runner (`migrate.go`)
 
-### 1. `test_workflow.ps1` / `test_workflow.sh`
+A comprehensive Go-based migration runner that manages database schema migrations with version tracking.
 
-**Purpose**: Complete end-to-end testing workflow automation
+### Features
 
-**Platforms**:
-- `test_workflow.ps1` - Windows PowerShell
-- `test_workflow.sh` - Unix/Linux/macOS/WSL (Bash)
+- **Version Tracking**: Tracks applied migrations in `schema_migrations` table
+- **Transaction Safety**: Each migration runs in a transaction
+- **Multiple Commands**: up, down, status, reset, seed
+- **Colored Output**: Green/red/yellow/cyan console output for clarity
+- **Error Handling**: Clear error messages with context
 
-**What it does**:
-1. ✅ Checks prerequisites (Docker, Go, docker-compose)
-2. ✅ Starts Docker services (PostgreSQL, RabbitMQ)
-3. ✅ Waits for services to be ready (health checks)
-4. ✅ Runs database migrations
-5. ✅ Prompts to start API server and Worker
-6. ✅ Runs comprehensive API tests
-7. ✅ Validates results
-8. ✅ Provides cleanup instructions
+### Commands
 
-**Usage**:
-
-```powershell
-# Windows PowerShell
-.\scripts\test_workflow.ps1
-
-# With options (skip certain steps)
-.\scripts\test_workflow.ps1 -SkipPrerequisites -SkipServices
-```
+#### `up` - Apply Pending Migrations
+Applies all migrations that haven't been run yet.
 
 ```bash
-# Unix/Linux/Mac/WSL
-chmod +x scripts/test_workflow.sh
-./scripts/test_workflow.sh
+go run scripts/migrate.go up
 ```
 
-**Options** (PowerShell only):
-- `-SkipPrerequisites` - Skip prerequisite checks
-- `-SkipServices` - Skip starting Docker services
-- `-SkipMigrations` - Skip database migrations
-- `-SkipSeeding` - Skip test data seeding
-
-**Expected Duration**: 2-3 minutes (including manual server startup)
-
----
-
-### 2. `seed_test_data.ps1` / `seed_test_data.sh`
-
-**Purpose**: Populate database with test customers and campaigns
-
-**Platforms**:
-- `seed_test_data.ps1` - Windows PowerShell
-- `seed_test_data.sh` - Unix/Linux/macOS/WSL (Bash)
-
-**What it does**:
-1. ✅ Checks API availability
-2. ✅ Creates test customers (default: 5)
-3. ✅ Creates test campaigns (default: 2)
-4. ✅ Shows preview of first campaign
-5. ✅ Provides next steps instructions
-
-**Usage**:
-
-```powershell
-# Windows PowerShell - Default (5 customers, 2 campaigns)
-.\scripts\seed_test_data.ps1
-
-# Custom counts
-.\scripts\seed_test_data.ps1 -CustomerCount 10 -CampaignCount 3
-
-# Custom API URL
-.\scripts\seed_test_data.ps1 -ApiUrl "http://localhost:8080"
+Example output:
 ```
+=== SMSLeopard Migration Runner ===
+
+Connecting to database...
+✓ Connected to database
+
+Running pending migrations...
+
+Applying migration 001_create_customers...
+  ✓ Migration 001 applied successfully
+Applying migration 002_create_campaigns...
+  ✓ Migration 002 applied successfully
+Applying migration 003_create_outbound_messages...
+  ✓ Migration 003 applied successfully
+
+✓ Successfully applied 3 migration(s)
+
+✨ Operation completed successfully!
+```
+
+#### `down` - Rollback Last Migration
+Rolls back the most recently applied migration by dropping its tables.
 
 ```bash
-# Unix/Linux/Mac/WSL - Default
-./scripts/seed_test_data.sh
-
-# Custom counts (positional arguments)
-./scripts/seed_test_data.sh http://localhost:8080 10 3
-# Args: [API_URL] [CUSTOMER_COUNT] [CAMPAIGN_COUNT]
+go run scripts/migrate.go down
 ```
 
-**Parameters**:
-- `ApiUrl` / `API_URL` - API server URL (default: `http://localhost:8080`)
-- `CustomerCount` / `CUSTOMER_COUNT` - Number of customers to create (default: 5)
-- `CampaignCount` / `CAMPAIGN_COUNT` - Number of campaigns to create (default: 2)
+Example output:
+```
+Rolling back last migration...
 
-**Expected Duration**: 10-30 seconds depending on count
+Rolling back migration 003...
+  ✓ Migration 003 rolled back
+✓ Successfully rolled back migration 003_create_outbound_messages
+```
 
-**Prerequisites**: API server must be running
+#### `status` - Show Migration Status
+Displays a table showing which migrations are applied and which are pending.
 
----
+```bash
+go run scripts/migrate.go status
+```
 
-## Quick Start Guide
+Example output:
+```
+Migration Status:
 
-### First Time Setup
+VERSION    NAME                              STATUS       APPLIED AT          
+-------------------------------------------------------------------------------------
+001        create_customers                  applied      2025-12-10 15:20:15
+002        create_campaigns                  applied      2025-12-10 15:20:15
+003        create_outbound_messages          applied      2025-12-10 15:20:16
+-------------------------------------------------------------------------------------
 
-1. **Run the automated test workflow:**
-   ```powershell
-   # Windows
-   .\scripts\test_workflow.ps1
-   
-   # Unix/Linux/Mac
-   ./scripts/test_workflow.sh
-   ```
+Summary: 3/3 migrations applied
+```
 
-2. **Follow the prompts** to start API and Worker servers
+#### `reset` - Reset All Migrations
+Rolls back all migrations and reapplies them. Useful for testing or resetting to a clean state.
 
-3. **Tests will run automatically** and validate the complete workflow
+```bash
+go run scripts/migrate.go reset
+```
 
-### Regular Testing
+⚠️ **Warning**: This will drop all tables and recreate them, deleting all data.
 
-If you already have services running:
+#### `seed` - Run Seed Migrations
+Runs only the seed data migrations from `migrations/seed/` directory.
 
-1. **Seed test data:**
-   ```powershell
-   .\scripts\seed_test_data.ps1
-   ```
+```bash
+go run scripts/migrate.go seed
+```
 
-2. **Send a campaign:**
-   ```bash
-   curl -X POST http://localhost:8080/api/campaigns/1/send
-   ```
+Example output:
+```
+Running seed migrations...
 
-3. **Check results:**
-   ```bash
-   curl http://localhost:8080/api/campaigns/1/messages
-   ```
+Running seed 001_customers...
+  ✓ Seed 001 applied successfully
+Running seed 002_campaigns...
+  ✓ Seed 002 applied successfully
 
----
+✓ Successfully ran 2 seed migration(s)
+```
 
-## Test Data
+### Migration Files
 
-### Default Test Customers
+#### Schema Migrations
+Located in `migrations/*.sql`:
+- `001_create_customers.sql` - Creates customers table
+- `002_create_campaigns.sql` - Creates campaigns table
+- `003_create_outbound_messages.sql` - Creates outbound_messages table
 
-The seed script creates customers with these details:
+#### Seed Migrations
+Located in `migrations/seed/*.sql`:
+- `001_customers.sql` - Seeds 15 test customers
+- `002_campaigns.sql` - Seeds 3 test campaigns
 
-1. **Alice Johnson** - `+254700000001`
-2. **Bob Williams** - `+254700000002`
-3. **Carol Brown** - `+254700000003`
-4. **David Miller** - `+254700000004`
-5. **Eve Davis** - `+254700000005`
-6. **Frank Garcia** - `+254700000006`
-7. **Grace Martinez** - `+254700000007`
-8. **Henry Rodriguez** - `+254700000008`
+### Migration Tracking
 
-### Default Test Campaigns
+Migrations are tracked in the `schema_migrations` table:
 
-1. **Welcome Campaign**
-   - Template: `"Hi {{.Name}}, welcome to SMSLeopard! 🎉 Your journey starts here."`
+```sql
+CREATE TABLE schema_migrations (
+    version INT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
 
-2. **Product Launch**
-   - Template: `"Hey {{.Name}}! We have exciting news for you. Check out our new product! Call {{.PhoneNumber}} for details."`
+### Rollback Strategy
 
-3. **Special Offer**
-   - Template: `"Dear {{.Name}}, exclusive offer just for you! Limited time only. Contact: {{.PhoneNumber}}"`
+The `down` command uses simple DROP TABLE statements in reverse dependency order:
 
----
+- **Version 003**: `DROP TABLE IF EXISTS outbound_messages;`
+- **Version 002**: `DROP TABLE IF EXISTS campaigns;`
+- **Version 001**: `DROP TABLE IF EXISTS customers;`
 
-## Script Features
+### Usage Workflow
 
-### Color-Coded Output
+#### Initial Setup
+```bash
+# 1. Start database (via Docker)
+docker-compose up -d postgres
 
-Both scripts use color-coded output for better readability:
+# 2. Apply all migrations
+go run scripts/migrate.go up
 
-- 🟢 **Green** - Success messages
-- 🔴 **Red** - Error messages
-- 🔵 **Blue** - Information messages
-- 🟡 **Yellow** - Section headers / warnings
-- ⚫ **Gray** - Details / secondary information
+# 3. Seed test data
+go run scripts/migrate.go seed
+```
+
+#### Development Workflow
+```bash
+# Check migration status
+go run scripts/migrate.go status
+
+# Apply new migrations
+go run scripts/migrate.go up
+
+# Rollback last migration if needed
+go run scripts/migrate.go down
+
+# Reset database to clean state
+go run scripts/migrate.go reset
+```
 
 ### Error Handling
 
-- Scripts exit on first error (`set -e` in bash, `$ErrorActionPreference = "Stop"` in PowerShell)
-- Clear error messages with troubleshooting hints
-- Prerequisite checks before running tests
-- Service health checks with timeouts
+The script provides clear error messages for common issues:
 
-### Validation
+- **Database connection errors**: Check Docker is running and credentials are correct
+- **File read errors**: Ensure migration files exist and are readable
+- **SQL execution errors**: Check SQL syntax in migration files
+- **Missing database**: Create database first via Docker
 
-**test_workflow** validates:
-- ✅ Docker and Docker Compose installed
-- ✅ Go installed
-- ✅ PostgreSQL accepting connections
-- ✅ RabbitMQ running
-- ✅ API server responding
-- ✅ Worker processing messages
-- ✅ Database state correct
-- ✅ Messages sent successfully
+### Notes
 
-**seed_test_data** validates:
-- ✅ API server is available
-- ✅ Customers created successfully
-- ✅ Campaigns created successfully
-- ✅ Template preview works
+- Migrations run in transactions for safety
+- Already-applied migrations are skipped automatically
+- Seed migrations can be run multiple times (they use `ON CONFLICT DO NOTHING`)
+- Each migration file must follow the naming pattern: `NNN_description.sql`
+- Version numbers must be unique and sequential (001, 002, 003, etc.)
 
 ---
 
-## Troubleshooting
+## Database Seeder (`seed.go`)
 
-### Scripts Won't Execute
+A Go script that generates and inserts programmatic seed data for testing and development.
 
-**PowerShell Execution Policy Issue:**
-```powershell
-# Check current policy
-Get-ExecutionPolicy
+### Features
 
-# Allow scripts (run as Administrator)
-Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+- Generates realistic Kenyan customer data
+- Creates diverse campaign templates
+- Supports custom counts via flags
+- Can clear existing seed data
+- Idempotent - safe to run multiple times
 
-# Or run with bypass
-powershell -ExecutionPolicy Bypass -File .\scripts\test_workflow.ps1
-```
-
-**Bash Permission Denied:**
-```bash
-# Make scripts executable
-chmod +x scripts/*.sh
-
-# Verify permissions
-ls -l scripts/
-```
-
-### API Not Available
-
-**Error**: `API is not available at http://localhost:8080`
-
-**Solution**:
-1. Check if API server is running: `go run cmd/api/main.go`
-2. Check port is correct: Default is 8080
-3. Check no firewall blocking: Test with `curl http://localhost:8080/api/health`
-
-### Docker Services Not Starting
-
-**Error**: `PostgreSQL failed to start within timeout`
-
-**Solution**:
-```bash
-# Check Docker is running
-docker ps
-
-# Check Docker Compose file exists
-ls docker-compose.yml
-
-# View logs
-docker-compose logs db
-docker-compose logs rabbitmq
-
-# Restart services
-docker-compose restart
-```
-
-### Migration Errors
-
-**Error**: `Migration failed`
-
-**Solution**:
-```bash
-# Check DATABASE_URL in .env
-cat .env | grep DATABASE_URL
-
-# Test database connection
-docker-compose exec db psql -U postgres -d smsleopard -c "SELECT 1;"
-
-# Reset database
-docker-compose exec db psql -U postgres -c "DROP DATABASE smsleopard; CREATE DATABASE smsleopard;"
-go run cmd/migrate/main.go
-```
-
----
-
-## Advanced Usage
-
-### Running Specific Test Phases
-
-**PowerShell:**
-```powershell
-# Skip prerequisites and services (already running)
-.\scripts\test_workflow.ps1 -SkipPrerequisites -SkipServices
-
-# Only run migrations
-.\scripts\test_workflow.ps1 -SkipPrerequisites -SkipServices -SkipSeeding
-```
-
-### Custom Test Data Volumes
-
-```powershell
-# Create 50 customers, 5 campaigns
-.\scripts\seed_test_data.ps1 -CustomerCount 50 -CampaignCount 5
-```
+### Usage
 
 ```bash
-# Create 100 customers, 10 campaigns
-./scripts/seed_test_data.sh http://localhost:8080 100 10
+# Basic usage (default: 12 customers, 3 campaigns)
+go run scripts/seed.go
+
+# Custom counts
+go run scripts/seed.go -customers=20 -campaigns=5
+
+# Clear existing seed data first
+go run scripts/seed.go -clear
+
+# Clear and reseed with custom counts
+go run scripts/seed.go -clear -customers=50
+
+# Show help
+go run scripts/seed.go -help
 ```
 
-### Automated CI/CD Integration
+### Flags
 
-For CI/CD pipelines, you can use these scripts with minimal interaction:
+- `-customers=N` - Number of customers to create (default: 12)
+- `-campaigns=N` - Number of campaigns to create (default: 3)
+- `-clear` - Clear existing seed data before inserting
+- `-help` - Show usage information
 
-```yaml
-# Example GitHub Actions
-- name: Run Tests
-  run: |
-    docker-compose up -d db rabbitmq
-    sleep 10
-    go run cmd/migrate/main.go
-    go run cmd/api/main.go &
-    go run cmd/worker/main.go &
-    sleep 5
-    ./scripts/seed_test_data.sh
+### Data Characteristics
+
+**Customers:**
+- Phone pattern: `+2547000010XXX` (different from SQL seeds)
+- Realistic Kenyan names and locations
+- Varied NULL field combinations for testing
+- Products: Smartphones, Laptops, Tablets, etc.
+
+**Campaigns:**
+- Multiple channel types (SMS, WhatsApp)
+- Various statuses (draft, scheduled, sent, failed)
+- Template placeholders for personalization
+- Some with scheduled_at timestamps
+
+### Notes
+
+- Uses `ON CONFLICT DO NOTHING` for idempotency
+- Different phone pattern from SQL seeds to avoid conflicts
+- Generates varied data with NULL fields for edge case testing
+- Progress reporting with colored output
+
+---
+
+## Comparison: migrate.go vs seed.go
+
+| Feature | migrate.go | seed.go |
+|---------|-----------|---------|
+| **Purpose** | Schema management | Test data generation |
+| **Data Source** | SQL files | Programmatic |
+| **Tracking** | Version tracked | Not tracked |
+| **Idempotency** | Migrations skip if applied | ON CONFLICT handling |
+| **Rollback** | Supported (down/reset) | Manual deletion |
+| **Use Case** | Production & Development | Development & Testing |
+
+### When to Use Which
+
+**Use `migrate.go`:**
+- Setting up database schema initially
+- Deploying schema changes to production
+- Rolling back problematic migrations
+- Checking migration status
+- Loading SQL-based seed data
+
+**Use `seed.go`:**
+- Generating large amounts of test data
+- Creating varied data with specific patterns
+- Quick iteration during development
+- Testing with different data sizes
+
+### Typical Workflow
+
+```bash
+# 1. Setup database schema
+go run scripts/migrate.go up
+
+# 2. Load SQL seed data (small, curated dataset)
+go run scripts/migrate.go seed
+
+# 3. Add programmatic seed data (larger, varied dataset)
+go run scripts/seed.go -customers=100 -campaigns=10
+
+# 4. During testing, clear and reseed as needed
+go run scripts/seed.go -clear -customers=50
+
+# 5. Reset schema if needed
+go run scripts/migrate.go reset
+go run scripts/migrate.go seed
 ```
 
 ---
 
-## Platform Compatibility
+## Prerequisites
 
-### Windows
+Both scripts require:
+- Go 1.21 or later
+- PostgreSQL database running (via Docker or local)
+- `.env` file with database configuration
+- Project dependencies installed (`go mod download`)
 
-- ✅ PowerShell 5.1+
-- ✅ PowerShell Core 7+
-- ✅ Windows 10/11
-- ✅ Windows Server 2016+
+## Environment Variables
 
-**Recommended**: Use PowerShell scripts (`.ps1`)
+Required in `.env` file:
 
-### Unix/Linux
+```env
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=smsleopard_db
+```
 
-- ✅ Bash 4.0+
-- ✅ Ubuntu 18.04+
-- ✅ Debian 9+
-- ✅ CentOS 7+
-- ✅ RHEL 7+
+## Getting Help
 
-**Recommended**: Use Bash scripts (`.sh`)
+Both scripts provide detailed help:
 
-### macOS
-
-- ✅ Bash 3.2+ (default)
-- ✅ Bash 5.0+ (via Homebrew)
-- ✅ Zsh (with bash compatibility)
-- ✅ macOS 10.14+
-
-**Recommended**: Use Bash scripts (`.sh`)
-
-### WSL (Windows Subsystem for Linux)
-
-- ✅ WSL 1
-- ✅ WSL 2 (recommended)
-- ✅ All Linux distributions
-
-**Recommended**: Use Bash scripts (`.sh`)
-
----
-
-## Script Maintenance
-
-### Adding New Test Scenarios
-
-To add new test scenarios to `test_workflow`:
-
-1. Add a new function in the script
-2. Call it from the `Main` function
-3. Add validation queries
-4. Update the `TESTING_GUIDE.md`
-
-### Modifying Test Data
-
-To change default test data in `seed_test_data`:
-
-1. Edit the `$testCustomers` / `CUSTOMER_NAMES` array
-2. Edit the `$testCampaigns` / `CAMPAIGN_NAMES` array
-3. Update counts if needed
-4. Test the changes
-
----
-
-## Related Documentation
-
-- [`docs/TESTING_GUIDE.md`](../docs/TESTING_GUIDE.md) - Comprehensive testing guide
-- [`docker-compose.yml`](../docker-compose.yml) - Docker service configuration
-- [`.env.example`](../.env.example) - Environment configuration template
-
----
-
-## Support
-
-For issues or questions:
-
-1. Check the [TESTING_GUIDE.md](../docs/TESTING_GUIDE.md) troubleshooting section
-2. Review script output for error messages
-3. Check Docker logs: `docker-compose logs`
-4. Verify service status: `docker-compose ps`
-
----
-
-## Version History
-
-- **v1.0** (Phase 5.6) - Initial release
-  - End-to-end test workflow script
-  - Test data seeding script
-  - Windows (PowerShell) and Unix (Bash) versions
-  - Comprehensive validation and error handling
-
----
-
-**Last Updated**: Phase 5.6 - End-to-End Queue Workflow Testing
+```bash
+go run scripts/migrate.go help
+go run scripts/seed.go -help

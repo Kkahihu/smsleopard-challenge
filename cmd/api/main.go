@@ -65,6 +65,7 @@ func main() {
 
 	// Initialize services
 	templateService := service.NewTemplateService()
+	healthService := service.NewHealthService(db, rabbitmqURL, "1.0.0")
 	campaignService := service.NewCampaignService(
 		campaignRepo,
 		customerRepo,
@@ -75,6 +76,7 @@ func main() {
 	)
 
 	// Initialize handlers
+	healthHandler := handler.NewHealthHandler(healthService)
 	campaignHandler := handler.NewCampaignHandler(campaignService)
 	previewHandler := handler.NewPreviewHandler(campaignService)
 
@@ -85,6 +87,9 @@ func main() {
 	router.Use(middleware.Recovery)
 	router.Use(middleware.Logger)
 
+	// Health endpoint (public, no authentication)
+	router.HandleFunc("/health", healthHandler.HandleHealth).Methods("GET")
+
 	// Campaign routes
 	router.HandleFunc("/campaigns", campaignHandler.Create).Methods("POST")
 	router.HandleFunc("/campaigns", campaignHandler.List).Methods("GET")
@@ -93,20 +98,6 @@ func main() {
 
 	// Preview route
 	router.HandleFunc("/campaigns/{id:[0-9]+}/personalized-preview", previewHandler.Preview).Methods("POST")
-
-	// Health endpoint
-	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		// Check database connection
-		if err := db.Ping(); err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte(`{"status":"unhealthy","database":"disconnected"}`))
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"healthy","database":"connected"}`))
-	}).Methods("GET")
 
 	// Start server
 	port := ":" + cfg.Server.Port
